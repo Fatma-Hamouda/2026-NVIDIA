@@ -1,104 +1,117 @@
 # Product Requirements Document (PRD)
 
-**Project Name:** [e.g., LABS-Solv-V1]
-**Team Name:** [e.g., QuantumVibes]
-**GitHub Repository:** [Insert Link Here]
-
----
-
-> **Note to Students:** > The questions and examples provided in the specific sections below are **prompts to guide your thinking**, not a rigid checklist. 
-> * **Adaptability:** If a specific question doesn't fit your strategy, you may skip or adapt it.
-> * **Depth:** You are encouraged to go beyond these examples. If there are other critical technical details relevant to your specific approach, please include them.
-> * **Goal:** The objective is to convince the reader that you have a solid plan, not just to fill in boxes.
-
----
-
-## 1. Team Roles & Responsibilities [You can DM the judges this information instead of including it in the repository]
-
-| Role | Name | GitHub Handle | Discord Handle
-| :--- | :--- | :--- | :--- |
-| **Project Lead** (Architect) | [Name] | [@handle] | [@handle] |
-| **GPU Acceleration PIC** (Builder) | [Name] | [@handle] | [@handle] |
-| **Quality Assurance PIC** (Verifier) | [Name] | [@handle] | [@handle] |
-| **Technical Marketing PIC** (Storyteller) | [Name] | [@handle] | [@handle] |
+**Project Name:** LABS-QAOA  
+**Team Name:** QuantumEgypt  
+**GitHub Repository:** https://github.com/Fatma-Hamouda/2026-NVIDIA/tree/main
 
 ---
 
 ## 2. The Architecture
-**Owner:** Project Lead
+**Owner:** Project Lead (Solo)
 
 ### Choice of Quantum Algorithm
-* **Algorithm:** [Identify the specific algorithm or ansatz]
-    * *Example:* "Quantum Approximate Optimization Algorithm (QAOA) with a hardware-efficient ansatz."
-    * *Example:* "Variational Quantum Eigensolver (VQE) using a custom warm-start initialization."
+**Algorithm:** QAOA (p = 1–2) with LABS-aware cost Hamiltonian and custom mixer scheduling  
 
-* **Motivation:** [Why this algorithm? Connect it to the problem structure or learning goals.]
-    * *Example (Metric-driven):* "We chose QAOA because we believe the layer depth corresponds well to the correlation length of the LABS sequences."
-    *  Example (Skills-driven):* "We selected VQE to maximize skill transfer. Our senior members want to test a novel 'warm-start' adaptation, while the standard implementation provides an accessible ramp-up for our members new to quantum variational methods."
-   
+**Quantum:**  
+- Cost Hamiltonian encodes the LABS energy function  
+- Mixer Hamiltonian uses a problem-informed scheduling strategy to improve convergence  
+
+**Embedding:**  
+Reduce effective problem size using correlation-preserving LABS structure (N → M active qubits)  
+
+**Classical:**  
+CuPy-accelerated MTS neighbor evaluation, batching up to 1,000 sequences per kernel call  
+
+**Motivation:**  
+LABS is a natural fit for QAOA because its energy function maps directly to an Ising-style cost Hamiltonian. QAOA provides a controllable quantum heuristic whose parameters can be optimized classically and evaluated efficiently on GPUs using CUDA-Q. By combining QAOA-generated candidate solutions with a GPU-accelerated classical MTS loop, we aim to reduce time-to-solution while maintaining solution quality. This approach balances judge familiarity (QAOA) with engineering innovation (GPU batching + hybrid workflow).
 
 ### Literature Review
-* **Reference:** [Title, Author, Link]
-* **Relevance:** [How does this paper support your plan?]
-    * *Example:* "Reference: 'QAOA for MaxCut.' Relevance: Although LABS is different from MaxCut, this paper demonstrates how parameter concentration can speed up optimization, which we hope to replicate."
+**Reference:** R. Shaydulin et al., "Evidence of scaling advantage for the quantum approximate optimization algorithm", [https://www.science.org/doi/10.1126/sciadv.adm6761](https://www.science.org/doi/10.1126/sciadv.adm6761)  
+
+**Relevance:**  
+This work studies QAOA performance on combinatorial optimization problems closely related to LABS and shows that shallow QAOA circuits (p = 1–2) can provide competitive approximations. It motivates our choice of low-depth QAOA and supports the feasibility of benchmarking against classical heuristics for moderate problem sizes.
 
 ---
 
 ## 3. The Acceleration Strategy
-**Owner:** GPU Acceleration PIC
+**Owner:** GPU Acceleration PIC (Solo)
 
 ### Quantum Acceleration (CUDA-Q)
-* **Strategy:** [How will you use the GPU for the quantum part?]
-    * *Example:* "After testing with a single L4, we will target the `nvidia-mgpu` backend to distribute the circuit simulation across multiple L4s for large $N$."
- 
+**Strategy:**  
+- Use CUDA-Q's `nvidia` backend to execute batched QAOA circuit evaluations  
+- Perform grid sweeps over (γ, β) parameters in parallel on the GPU  
+- Compare CPU backend vs GPU backend for identical circuits to quantify acceleration  
+
+**Scaling Plan:**  
+- Development and validation on CPU backend (qBraid)  
+- Migration to Brev L4 GPU for performance benchmarking  
+- Optional multi-GPU experiments if time and credits allow  
 
 ### Classical Acceleration (MTS)
-* **Strategy:** [The classical search has many opportuntities for GPU acceleration. What will you chose to do?]
-    * *Example:* "The standard MTS evaluates neighbors one by one. We will use `cupy` to rewrite the energy function to evaluate a batch of 1,000 neighbor flips simultaneously on the GPU."
+**Strategy:**  
+- Rewrite LABS energy computation from NumPy to CuPy  
+- Evaluate hundreds to thousands of MTS neighbor candidates in parallel  
+- Minimize host–device transfers by keeping sequences and correlation tensors resident on GPU  
 
 ### Hardware Targets
-* **Dev Environment:** [e.g., Qbraid (CPU) for logic, Brev L4 for initial GPU testing]
-* **Production Environment:** [e.g., Brev A100-80GB for final N=50 benchmarks]
+**Development:** qBraid CPU backend  
+**GPU Testing:** Brev L4 (primary target)  
+**Stretch Goal:** Short A100 benchmark for scaling comparison (if resources permit)
 
 ---
 
 ## 4. The Verification Plan
-**Owner:** Quality Assurance PIC
+**Owner:** Quality Assurance PIC (Solo)
 
 ### Unit Testing Strategy
-* **Framework:** [e.g., `pytest`, `unittest`]
-* **AI Hallucination Guardrails:** [How do you know the AI code is right?]
-    * *Example:* "We will require AI-generated kernels to pass a 'property test' (Hypothesis library) ensuring outputs are always within theoretical energy bounds before they are integrated."
+**Framework:** `pytest`  
+
+**AI Hallucination Guardrails:**  
+All AI-generated code must pass:  
+- Deterministic unit tests  
+- Known small-N ground-truth comparisons  
+- Physical and symmetry-based property tests  
 
 ### Core Correctness Checks
-* **Check 1 (Symmetry):** [Describe a specific physics check]
-    * *Example:* "LABS sequence $S$ and its negation $-S$ must have identical energies. We will assert `energy(S) == energy(-S)`."
-* **Check 2 (Ground Truth):**
-    * *Example:* "For $N=3$, the known optimal energy is 1.0. Our test suite will assert that our GPU kernel returns exactly 1.0 for the sequence `[1, 1, -1]`."
+**Check 1 – LABS Symmetry:** `assert energy(S) == energy(-S)`  
+
+**Check 2 – Ground Truth (Small N):**  
+For N = 3, the optimal LABS energy is known. The test suite asserts exact agreement.  
+
+**Check 3 – QAOA Sanity:**  
+- Expectation values remain within theoretical LABS bounds  
+- QAOA results match brute-force evaluation for N ≤ 10  
 
 ---
 
 ## 5. Execution Strategy & Success Metrics
-**Owner:** Technical Marketing PIC
+**Owner:** Technical Marketing PIC (Solo)
 
 ### Agentic Workflow
-* **Plan:** [How will you orchestrate your tools?]
-    * *Example:* "We are using Cursor as the IDE. We have created a `skills.md` file containing the CUDA-Q documentation so the agent doesn't hallucinate API calls. The QA Lead runs the tests, and if they fail, pastes the error log back into the Agent to refactor."
+**Plan:**  
+- Cursor IDE for coding  
+- Local `skills.md` with CUDA-Q API references to reduce hallucinations  
+- Iterative loop: write code → run pytest → inspect failures → refine  
 
 ### Success Metrics
-* **Metric 1 (Approximation):** [e.g., Target Ratio > 0.9 for N=30]
-* **Metric 2 (Speedup):** [e.g., 10x speedup over the CPU-only Tutorial baseline]
-* **Metric 3 (Scale):** [e.g., Successfully run a simulation for N=40]
+**Metric 1 (Quality):** QAOA-seeded solutions match or exceed classical MTS quality for N ≤ 25  
+**Metric 2 (Performance):** ≥ 10× speedup in parameter sweep evaluation on GPU vs CPU  
+**Metric 3 (Scale):** Successful GPU-accelerated runs for LABS instances up to N ≈ 25–30  
 
 ### Visualization Plan
-* **Plot 1:** [e.g., "Time-to-Solution vs. Problem Size (N)" comparing CPU vs. GPU]
-* **Plot 2:** [e.g., "Convergence Rate" (Energy vs. Iteration count) for the Quantum Seed vs. Random Seed]
+**Plot 1:** QAOA energy landscape (γ, β heatmap)  
+**Plot 2:** Time-to-solution vs problem size (CPU vs GPU)  
+**Plot 3:** Energy convergence (classical MTS vs QAOA-seeded MTS)
 
 ---
 
 ## 6. Resource Management Plan
-**Owner:** GPU Acceleration PIC 
+**Owner:** GPU Acceleration PIC (Solo)
 
-* **Plan:** [How will you avoid burning all your credits?]
-    * *Example:* "We will develop entirely on Qbraid (CPU) until the unit tests pass. We will then spin up a cheap L4 instance on Brev for porting. We will only spin up the expensive A100 instance for the final 2 hours of benchmarking."
-    * *Example:* "The GPU Acceleration PIC is responsible for manually shutting down the Brev instance whenever the team takes a meal break."
+**Plan:**  
+- CPU-only development and full test coverage  
+- Short GPU sessions on Brev L4 for benchmarking  
+- Manual shutdown of GPU instances after each run  
+- Optional short A100 run for final scaling figure (time-boxed)
+
+---
